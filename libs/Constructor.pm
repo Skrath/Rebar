@@ -43,14 +43,10 @@ sub new($;%) {
         abs_base_dir    => $Config::abs_base_dir,
         debug           => $Config::debug,
         message         => new Rebar_Message(%{$Config::messages}),
+        object_list     => $Config::object_list,
     };
     $self->{message}->post(qq[], qq[Constructor], 4);
-    
-    $self->{url_parser} = new Rebar_Object::Rebar_url_parser($self->{message}, config => qq[url_parser]);
-    $self->{find_template} = new Rebar_Object::Rebar_find_file($self->{message}, config => qq[template_files]);
-    $self->{file_handler} = new Rebar_Object::Rebar_file_handler($self->{message}, config => qq[file_handler]);
-    $self->{template_parser} = new Rebar_Object::Rebar_template_parser($self->{message}, config => qq[template]);
-    
+
     # We do this assignment outside of the hash above.  Otherwise when
     # we try to create a Director while not running under Apache
     # (e.g. the test scripts) the whole thing will break since
@@ -58,24 +54,29 @@ sub new($;%) {
     # elements in a hash" problem.  Fucking solution right here baby.
     ($self->{base_dir}) = $ENV{SCRIPT_NAME} =~ m!^(.+)/.*?$!
         if exists $ENV{SCRIPT_NAME};
-        
-    $self->{base_dir} ||= '';
-    
-    my $constructor = bless $self => ( $class or ref $class );
-    #$director->load_settings();
-    
-    #$self->{parameters} = $self->{url_parser}->in(url => $constructor->{cgi}->url_param('command') || 0, return => qq[parsed]);
-    #$self->{parameters} = $self->{faketime}{parsed};
-    #$constructor->parse_url( $constructor->{cgi}->url_param('command') );
 
-    # We have to have an action before we get into start_session()
-    # otherwise we'll have a problem with automatic logouts under
-    # certain situations.
-    #$self->{action} ||= 'show';
-    
-    #$director->start_session();
-    
-    return $constructor;
+    $self->{base_dir} ||= '';
+
+    my $self = bless $self => ( $class or ref $class );
+
+    return $self;
+}
+
+###
+# Auto-loader for objects
+###
+sub load_objects($) {
+    my $self        = shift;
+    my %object_list = %{$self->{object_list}};
+
+    use Data::Dumper;
+
+    no strict 'refs';
+
+    foreach my $key (keys %object_list) {
+        my $object_eval = q(new Rebar_Object) . q(::) . $object_list{$key}{object} . q[($self->{message}] . q(, config => qq[) . $key .q(]) . q[)];
+        $self->{$key} = eval $object_eval;
+    }
 }
 
 #### PUBLIC METHODS ##################################################
@@ -104,7 +105,7 @@ sub redirect($$) {
         return if $self->{action} eq $1 and $self->{model}  eq $2;
         return if $self->{model}  eq $1 and $self->{action} eq $2;
     }
-    
+
     $self->parse_url($url) and $self->run();
 }
 
@@ -117,7 +118,9 @@ sub run($) {
     #    no strict 'refs';
     #    return &{$function}(director => $self) if exists &{$function};
     #}
-    
+
+    $self->load_objects();
+
     my @template_queue;
     my $output;
     push (@template_queue, $self->{file_handler}->in(
@@ -127,7 +130,7 @@ sub run($) {
                                         ),
                             )
     );
-    
+
     while (@template_queue) {
         $self->{template_parser}->in(template => pop @template_queue);
         $output .= $self->{template_parser}->out();
@@ -139,6 +142,7 @@ sub run($) {
             );
         }
     }
+
     print $output;
 }
 
@@ -150,7 +154,7 @@ sub start_session($) {
     my (%session, $session_id);
     my $user      = Factory::Model( 'user' );
     my $manager    = Factory::Manager( 'user', $self );
-    
+
     $session_id = $cookies{SESSION_ID}->value if defined $cookies{SESSION_ID} and ( ($self->{action}) and (not $self->{action} eq 'logout') );
 
     tie %session, 'Apache::Session::Postgres', $session_id, {
@@ -166,7 +170,7 @@ sub start_session($) {
         $self->{session}->{user}->{LEVEL} = $user->level();
         $self->{session}->{user}->{EMAIL} = $user->email();
     }
-    
+
     $self->{session_cookie} = new CGI::Cookie(
         -name => 'SESSION_ID',
         -value => $session{_session_id},
@@ -207,19 +211,19 @@ sub end_session($) {
 sub load_settings($) {
     my $self = shift;
     $self->{message}->post(qq[], qq[Constructor], 4);
-    
+
     $self->{db}->query(sql => 'SELECT * FROM settings');
     my $settings = $self->{db}->get_all_rows(key => 'settings_id');
 
     # If we simply wrote $self->{settings} = $settings then we would
     # have to write things later like:
-    # 
+    #
     #     $self->{settings}->{signup_email_address}->{settings_value}
     #
     # Which sucks.  Furthermore the return value of get_all_rows() will
     # have duplicated the keys, do to the way DBI behaves.  So the loop
     # below trades off some processing time to remove duplicate keys.
-    
+
     for (keys %$settings) {
         $self->{settings}->{$_} = $settings->{$_}->{settings_value};
     }
@@ -236,13 +240,13 @@ sub parse_url($$) {
 
     #for my $chunk ( split m!/! => $url ) {
     #    next if not $chunk;
-        
+
         # Once we have an action and a model we stop.  This way we are
         # certain to get only the first action and model in the URL.
         # It also cuts this loop short, as it's rather expensive for
         # us to do with the greps below.
         #last if $self->{action} and $self->{model};
-        
+
         # Get the action and model, assuming they are in our list of
         # acceptable actions and models.
     #    if ( grep { $chunk eq $_ } @actions ) { $self->{action} = $chunk, next; }

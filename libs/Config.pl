@@ -16,7 +16,7 @@ our %database = qw(
                       password eric
                       openx_prefix ox_
               );
-              
+
 # Had to move this in here so that Blosxom could utilize this
 our $abs_base_dir   = q();
 ($abs_base_dir) = ($ENV{SCRIPT_FILENAME} =~ m!^(.+)/.*?$!)
@@ -24,8 +24,35 @@ our $abs_base_dir   = q();
 
 ######################################################################
 
+our $object_list = {
+    'url_parser' => {
+        object  => qq[Rebar_url_parser],
+        return  => qq[parsed],
+    },
+    'find_template' =>  {
+        object      => q(Rebar_find_file),
+        location    => q(templates),
+        error       => q(error),
+        default     => q(index),
+        extensions  => [q(html), q(htm), q(tpl)],
+        return      => q(file),
+    },
+    'file_handler' => {
+        object  => q(Rebar_file_handler),
+        action  => qq[read],
+        return  => qq[contents],
+    },
+    'template_parser' => {
+        object      => q(Rebar_template_parser),
+        token_left  => q(<<),
+        token_right => q(>>),
+        patterns    => {},
+        return      => q(parsed),
+    },
+};
+
 our $url_parser = {
-    return  => qq[parsed],  
+    return  => qq[parsed],
 };
 
 our $file_handler = {
@@ -33,7 +60,7 @@ our $file_handler = {
     return  => qq[contents],
 };
 
-our $template_files = {
+our $find_template = {
                     location    => q(templates),
                     error       => q(error),
                     default     => q(index),
@@ -41,7 +68,7 @@ our $template_files = {
                     return      => q(file),
 };
 
-our $template = {
+our $template_parser = {
                     token_left	=> q(<<),
                     token_right => q(>>),
                     patterns    => {},
@@ -68,12 +95,5 @@ our $debug = {
     };
 
 
-######################################################################
 
-# This absolute path points to the location of the system's crontab.
-# It's used by the Brain component to manipulate automated tasks.
-our $crontab = '/home/eric/Temp/crontab-test.txt';
-
-######################################################################
-    
 1;
